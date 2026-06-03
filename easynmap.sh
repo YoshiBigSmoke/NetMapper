@@ -361,8 +361,10 @@ analyze_scan() {
     echo -e "  ${GRAY}  ›${NC} Spoof DNS port:  ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}"
     echo -e "  ${GRAY}  ›${NC} Fragment:        ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
     echo ""
-    echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
-    (( allow_retry )) && auto_retry
+    if (( allow_retry )); then
+      echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
+      auto_retry
+    fi
     return
   fi
 
@@ -376,8 +378,10 @@ analyze_scan() {
     echo -e "  ${GRAY}  ›${NC} UDP:        ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
     echo -e "  ${GRAY}  ›${NC} Full + -A:  ${BGREEN}sudo nmap -A -Pn -p- --min-rate 500 $TARGET${NC}"
     echo ""
-    echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
-    (( allow_retry )) && auto_retry
+    if (( allow_retry )); then
+      echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
+      auto_retry
+    fi
     return
   fi
 
@@ -389,8 +393,10 @@ analyze_scan() {
     echo -e "  ${GRAY}  ›${NC} Full range: ${BGREEN}sudo nmap -sS -Pn -p- --min-rate 500 $TARGET${NC}"
     echo -e "  ${GRAY}  ›${NC} UDP:        ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
     echo ""
-    echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
-    (( allow_retry )) && auto_retry
+    if (( allow_retry )); then
+      echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
+      auto_retry
+    fi
     return
   fi
 
@@ -417,15 +423,15 @@ post_scan_menu() {
   local is_apple=0
   [[ "$DEVICE_TYPE" =~ ^[123]$ ]] && is_apple=1
 
-  local opt2_label opt2_flags
+  local opt2_label
   case "$DEVICE_TYPE" in
-    1)   opt2_label="${BMAGENTA}-A + Apple scripts${NC} "; opt2_flags="-A --script afp-serverinfo,smb-os-discovery,dns-service-discovery" ;;
-    2|3) opt2_label="${BCYAN}lockdownd only (62078)${NC}"; opt2_flags="-sS -Pn -p 62078 --source-port 5353" ;;
-    4)   opt2_label="${BBLUE}SMB + WinRM${NC}           "; opt2_flags="-sS -Pn -p 135,139,445,5985 --script smb-os-discovery" ;;
-    5)   opt2_label="${BGREEN}SSH + banner${NC}          "; opt2_flags="-sS -Pn -p 22,80 --script ssh-hostkey,banner" ;;
-    8)   opt2_label="${RED}SNMP + Telnet${NC}         "; opt2_flags="-sS -sU -Pn -p T:23,80,U:161 --script snmp-sysdescr" ;;
-    9)   opt2_label="${BLUE}JetDirect + SNMP${NC}      "; opt2_flags="-sS -sU -Pn -p T:9100,515,631,U:161 --script pjl-ready-message" ;;
-    *)   opt2_label="${BCYAN}-A -sU${NC}               "; opt2_flags="-A -sU" ;;
+    1)   opt2_label="${BMAGENTA}-A + Apple scripts${NC}    " ;;
+    2|3) opt2_label="${BCYAN}lockdownd only  ·62078${NC} " ;;
+    4)   opt2_label="${BBLUE}SMB + WinRM${NC}             " ;;
+    5)   opt2_label="${BGREEN}SSH + banner${NC}            " ;;
+    8)   opt2_label="${RED}SNMP + Telnet${NC}           " ;;
+    9)   opt2_label="${BLUE}JetDirect + SNMP${NC}        " ;;
+    *)   opt2_label="${BCYAN}-A + UDP${NC}                " ;;
   esac
 
   while true; do
@@ -451,20 +457,36 @@ post_scan_menu() {
       2) return 2 ;;   # same target
       3) return 3 ;;   # re-run
       4|5|6|7|8|9)
-        local extra_flags=""
+        # Each option builds a complete, clean command — no flag conflicts
+        local retry_cmd="" retry_label=""
         case "$choice" in
-          4) extra_flags="-A" ;;
-          5) extra_flags="$opt2_flags" ;;
-          6) extra_flags="-f --mtu 24" ;;
-          7) extra_flags="-sU --top-ports 100" ;;
-          8) extra_flags="-p- --min-rate 500" ;;
+          4) retry_cmd="sudo nmap -A -Pn $TARGET"
+             retry_label="-A" ;;
+          5) # Device-specific standalone — its own ports, no DEPTH_FLAGS conflict
+             case "$DEVICE_TYPE" in
+               1)   retry_cmd="sudo nmap -A -Pn -p 22,445,548 --script afp-serverinfo,smb-os-discovery,dns-service-discovery $TARGET" ;;
+               2|3) retry_cmd="sudo nmap -sS -Pn -p 62078 --source-port 5353 $TARGET" ;;
+               4)   retry_cmd="sudo nmap -sS -Pn -p 135,139,445,5985 --script smb-os-discovery $TARGET" ;;
+               5)   retry_cmd="sudo nmap -sS -Pn -p 22,80 --script ssh-hostkey,banner $TARGET" ;;
+               8)   retry_cmd="sudo nmap -sS -sU -Pn -p T:23,80,U:161 --script snmp-sysdescr $TARGET" ;;
+               9)   retry_cmd="sudo nmap -sS -sU -Pn -p T:9100,515,631,U:161 --script pjl-ready-message $TARGET" ;;
+               *)   retry_cmd="sudo nmap -A -sU -Pn $TARGET" ;;
+             esac
+             retry_label="device-specific" ;;
+          6) retry_cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn -f --mtu 24 $TARGET"
+             retry_label="-f --mtu 24" ;;
+          7) retry_cmd="sudo nmap -sU -Pn --top-ports 100 $TARGET"
+             retry_label="-sU top 100" ;;
+          8) retry_cmd="sudo nmap $STEALTH_FLAGS -Pn -p- --min-rate 500 $TARGET"
+             retry_label="-p- full range" ;;
           9)
-            echo -ne "\n  ${BYELLOW}➤${NC}  Extra nmap flags: "
-            read -r extra_flags
-            [[ -z "$extra_flags" ]] && continue
+            echo -ne "\n  ${BYELLOW}➤${NC}  Full flags (after 'sudo nmap'): "
+            read -r custom_flags
+            [[ -z "$custom_flags" ]] && continue
+            retry_cmd="sudo nmap -Pn $custom_flags $TARGET"
+            retry_label="custom"
             ;;
         esac
-        local retry_cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn $extra_flags $TARGET"
         echo -e "\n  ${GRAY}  │${NC}  ${BGREEN}$retry_cmd${NC}\n"
         echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
         read -r confirm
@@ -473,7 +495,7 @@ post_scan_menu() {
         retry_tmp=$(mktemp /tmp/en_scan_XXXXXX.txt)
         echo ""
         echo -e "$LINE"
-        echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}[$extra_flags]${NC}"
+        echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}[$retry_label]${NC}"
         echo -e "$LINE\n"
         eval "$retry_cmd" | tee "$retry_tmp"
         echo ""
