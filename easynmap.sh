@@ -280,13 +280,15 @@ get_device_tips() {
       echo -e "  ${GREEN}  ›${NC} Test ADB: ${BGREEN}adb connect $TARGET:5555${NC}"
       ;;
     8)
-      echo -e "  ${RED}  ›${NC} IoT: many devices only expose HTTP (80/8080) or Telnet (23)"
+      echo -e "  ${RED}  ›${NC} IoT/Router: ${BYELLOW}-sS (SYN) is often blocked${NC} — use TCP connect instead:"
+      echo -e "  ${RED}    ${BGREEN}sudo nmap -sT -Pn -p 80,443,22,23,8080 $TARGET${NC}"
       echo -e "  ${RED}  ›${NC} IoT: check if AP isolation is blocking device-to-device traffic"
       echo -e "  ${RED}  ›${NC} SNMP: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
       ;;
     9)
       echo -e "  ${BLUE}  ›${NC} Printer: main ports are 9100 (JetDirect), 515 (LPD), 631 (IPP)"
-      echo -e "  ${BLUE}  ›${NC} SNMP gives model/status: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
+      echo -e "  ${BLUE}  ›${NC} Routers/printers block SYN — use TCP connect: ${BGREEN}sudo nmap -sT -Pn -p 80,443,9100 $TARGET${NC}"
+      echo -e "  ${BLUE}  ›${NC} SNMP: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
       echo -e "  ${BLUE}  ›${NC} Check web interface: ${BGREEN}curl -s http://$TARGET | head -5${NC}"
       ;;
   esac
@@ -302,8 +304,8 @@ get_device_rescue_cmd() {
     5)  echo "sudo nmap -sS -Pn -p 22,80,443,8080 --script ssh-hostkey,banner $TARGET" ;;
     6)  echo "sudo nmap -A -Pn --source-port 53 $TARGET" ;;
     7)  echo "sudo nmap -sS -Pn -p 5555,5037,8080 --script banner $TARGET" ;;
-    8)  echo "sudo nmap -sS -sU -Pn -p T:23,80,8080,U:161 --script snmp-sysdescr,banner $TARGET" ;;
-    9)  echo "sudo nmap -sS -sU -Pn -p T:80,515,631,9100,U:161 --script pjl-ready-message,http-title $TARGET" ;;
+    8)  echo "sudo nmap -sT -sU -Pn -p T:23,80,8080,U:161 --script snmp-sysdescr,banner $TARGET" ;;
+    9)  echo "sudo nmap -sT -sU -Pn -p T:80,515,631,9100,U:161 --script pjl-ready-message,http-title $TARGET" ;;
     *)  echo "sudo nmap -A -Pn $TARGET" ;;
   esac
 }
@@ -445,7 +447,8 @@ post_scan_menu() {
     echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}-f --mtu 24${NC}             Fragment packets"
     echo -e "  ${BWHITE}[7]${NC}  ${BYELLOW}-sU --top-ports 100${NC}     UDP top 100"
     echo -e "  ${BWHITE}[8]${NC}  ${BYELLOW}-p- --min-rate 500${NC}      All 65535 ports"
-    echo -e "  ${BWHITE}[9]${NC}  ${WHITE}Custom flags${NC}            type your own nmap parameters"
+    echo -e "  ${BWHITE}[9]${NC}  ${BYELLOW}-sT${NC}                      TCP connect  ${GRAY}(use when SYN is blocked — routers, IoT)${NC}"
+    echo -e "  ${BWHITE}[c]${NC}  ${WHITE}Custom flags${NC}            type your own nmap parameters"
     echo -e "  ${GRAY}  ─────────────────────────────────────────────────────────────${NC}"
     echo -e "  ${BWHITE}[0]${NC}  ${GRAY}Exit${NC}\n"
     echo -ne "  ${BYELLOW}➤${NC}  Selection: "
@@ -456,7 +459,7 @@ post_scan_menu() {
       1) return 1 ;;   # new scan
       2) return 2 ;;   # same target
       3) return 3 ;;   # re-run
-      4|5|6|7|8|9)
+      4|5|6|7|8|9|c|C)
         # Each option builds a complete, clean command — no flag conflicts
         local retry_cmd="" retry_label=""
         case "$choice" in
@@ -468,8 +471,8 @@ post_scan_menu() {
                2|3) retry_cmd="sudo nmap -sS -Pn -p 62078 --source-port 5353 $TARGET" ;;
                4)   retry_cmd="sudo nmap -sS -Pn -p 135,139,445,5985 --script smb-os-discovery $TARGET" ;;
                5)   retry_cmd="sudo nmap -sS -Pn -p 22,80 --script ssh-hostkey,banner $TARGET" ;;
-               8)   retry_cmd="sudo nmap -sS -sU -Pn -p T:23,80,U:161 --script snmp-sysdescr $TARGET" ;;
-               9)   retry_cmd="sudo nmap -sS -sU -Pn -p T:9100,515,631,U:161 --script pjl-ready-message $TARGET" ;;
+               8)   retry_cmd="sudo nmap -sT -sU -Pn -p T:23,80,U:161 --script snmp-sysdescr $TARGET" ;;
+               9)   retry_cmd="sudo nmap -sT -sU -Pn -p T:9100,515,631,U:161 --script pjl-ready-message $TARGET" ;;
                *)   retry_cmd="sudo nmap -A -sU -Pn $TARGET" ;;
              esac
              retry_label="device-specific" ;;
@@ -479,7 +482,9 @@ post_scan_menu() {
              retry_label="-sU top 100" ;;
           8) retry_cmd="sudo nmap $STEALTH_FLAGS -Pn -p- --min-rate 500 $TARGET"
              retry_label="-p- full range" ;;
-          9)
+          9) retry_cmd="sudo nmap -sT -Pn -p 80,443,22,23,8080,8443 $TARGET"
+             retry_label="-sT TCP connect" ;;
+          c|C)
             echo -ne "\n  ${BYELLOW}➤${NC}  Full flags (after 'sudo nmap'): "
             read -r custom_flags
             [[ -z "$custom_flags" ]] && continue
