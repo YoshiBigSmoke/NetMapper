@@ -214,7 +214,7 @@ menu_extras() {
 
 # ── Scan analysis & recommendations ──────────────────────────────────────────
 analyze_scan() {
-  local f="/tmp/en_scan_result.txt"
+  local f="$1"
   [[ ! -f "$f" ]] && return
 
   local open_count host_down all_filtered os_detected os_unreliable
@@ -310,13 +310,17 @@ compose_and_run() {
   echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}"
   echo -e "$LINE\n"
 
-  eval "$cmd" | tee /tmp/en_scan_result.txt
+  local tmp_out
+  tmp_out=$(mktemp /tmp/en_scan_XXXXXX.txt)
+
+  eval "$cmd" | tee "$tmp_out"
   echo ""
   echo -e "$LINE"
   echo -e "  ${BGREEN}✓${NC}  Scan complete."
   echo -e "$LINE"
 
-  analyze_scan
+  analyze_scan "$tmp_out"
+  rm -f "$tmp_out"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
