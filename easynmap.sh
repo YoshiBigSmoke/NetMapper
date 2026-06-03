@@ -11,7 +11,7 @@ MAGENTA='\033[0;35m'  BMAGENTA='\033[1;35m'
 WHITE='\033[0;37m'    BWHITE='\033[1;37m'
 GRAY='\033[0;90m'     NC='\033[0m'
 
-SEP="${GRAY}  ──────────────────────────────────────────────────────────────────${NC}"
+LINE="${GRAY}  ──────────────────────────────────────────────────────────────────${NC}"
 
 # ── Modules ───────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,86 +22,86 @@ source "$SCRIPT_DIR/modules/stealth.sh"
 # ── Banner ────────────────────────────────────────────────────────────────────
 banner() {
   clear
-  echo -e ""
-  echo -e "${BMAGENTA}  ╔══════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BMAGENTA}  ║${NC}                                                                      ${BMAGENTA}║${NC}"
-  echo -e "${BMAGENTA}  ║  ${BRED}▓${BGREEN}▓${BYELLOW}▓ ${BCYAN}E${BMAGENTA}A${BRED}S${BGREEN}Y${BYELLOW}N${BCYAN}M${BMAGENTA}A${BRED}P ${BGREEN}▓${BYELLOW}▓${BCYAN}▓${NC}   ${BWHITE}Network Scanner with Profiles${NC}         ${BMAGENTA}║${NC}"
-  echo -e "${BMAGENTA}  ║${NC}                                                                      ${BMAGENTA}║${NC}"
-  echo -e "${BMAGENTA}  ║  ${GRAY}v2.0  ·  github.com/YoshiBigSmoke  ·  Authorized environments only${NC}   ${BMAGENTA}║${NC}"
-  echo -e "${BMAGENTA}  ║${NC}                                                                      ${BMAGENTA}║${NC}"
-  echo -e "${BMAGENTA}  ╚══════════════════════════════════════════════════════════════════════╝${NC}\n"
+  echo ""
+  echo -e "${BCYAN}  ██████╗  █████╗ ███████╗██╗   ██╗███╗   ██╗███╗   ███╗ █████╗ ██████╗${NC}"
+  echo -e "${BCYAN}  ██╔════╝██╔══██╗██╔════╝╚██╗ ██╔╝████╗  ██║████╗ ████║██╔══██╗██╔══██╗${NC}"
+  echo -e "${BCYAN}  █████╗  ███████║███████╗ ╚████╔╝ ██╔██╗ ██║██╔████╔██║███████║██████╔╝${NC}"
+  echo -e "${BCYAN}  ██╔══╝  ██╔══██║╚════██║  ╚██╔╝  ██║╚██╗██║██║╚██╔╝██║██╔══██║██╔═══╝${NC}"
+  echo -e "${BGREEN}  ███████╗██║  ██║███████║   ██║   ██║ ╚████║██║ ╚═╝ ██║██║  ██║██║${NC}"
+  echo -e "${BGREEN}  ╚══════╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝${NC}"
+  echo ""
+  echo -e "  ${GRAY}Network Scanner with Profiles  ·  v2.0  ·  Authorized environments only${NC}"
+  echo ""
+  echo -e "$LINE"
+  echo ""
 }
 
 # ── Section header ────────────────────────────────────────────────────────────
-# Arg 1: ANSI bg+fg code   Arg 2: label
-header() {
-  echo -e "\n${1}  ◈  ${2}  ${NC}"
-  echo -e "$SEP\n"
+section() {
+  local icon="$1" label="$2" color="${3:-$BCYAN}"
+  echo -e "\n  ${color}${icon} ${label}${NC}  ${GRAY}──────────────────────────────────────────────────${NC}\n"
 }
 
 # ── Detect local IP ───────────────────────────────────────────────────────────
 get_local_ip() {
   local iface ip
   iface=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
-  [[ -z "$iface" ]] && { echo -e "\n  ${BRED}[!]${NC} Could not detect network interface.\n"; exit 1; }
+  [[ -z "$iface" ]] && { echo -e "\n  ${BRED}✗${NC}  Could not detect network interface.\n"; exit 1; }
   ip=$(ip addr show "$iface" 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
-  [[ -z "$ip" ]] && { echo -e "\n  ${BRED}[!]${NC} Could not detect IP on $iface.\n"; exit 1; }
+  [[ -z "$ip" ]] && { echo -e "\n  ${BRED}✗${NC}  Could not detect IP on $iface.\n"; exit 1; }
   IFACE="$iface"
   LOCAL_IP="$ip"
 }
 
-# ── Validate target (IP / hostname / CIDR only) ───────────────────────────────
+# ── Validate target ───────────────────────────────────────────────────────────
 validate_target() {
   if [[ ! "$TARGET" =~ ^[a-zA-Z0-9._:/\-]+$ ]]; then
-    echo -e "\n  ${BRED}[!]${NC} Invalid target: '${TARGET}'\n"
+    echo -e "\n  ${BRED}✗${NC}  Invalid target: '${TARGET}'\n"
     exit 1
   fi
 }
 
 # ── Menu: Target ──────────────────────────────────────────────────────────────
 menu_target() {
-  header '\033[1;37;44m' 'TARGET'
-  echo -e "  ${BCYAN}◆${NC} Local IP : ${BYELLOW}$LOCAL_IP${NC}   ${GRAY}[$IFACE]${NC}\n"
-  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Scan my network${NC}    ${GRAY}→  ${LOCAL_IP%.*}.0/24${NC}"
-  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}IP / hostname${NC}      ${GRAY}→  enter manually${NC}\n"
-  echo -ne "  ${BMAGENTA}➤  Selection:${NC} "
+  section "◆" "TARGET" "$BCYAN"
+  echo -e "  ${GRAY}Local IP${NC}  ${BYELLOW}$LOCAL_IP${NC}  ${GRAY}via ${BWHITE}$IFACE${NC}\n"
+  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Scan my network${NC}   ${GRAY}→  discover all hosts on ${LOCAL_IP%.*}.0/24${NC}"
+  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}Specific target${NC}   ${GRAY}→  enter IP or hostname manually${NC}\n"
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
   read -r opt
 
   case "$opt" in
     1)
       local subnet="${LOCAL_IP%.*}.0/24"
-      echo -e "\n$SEP"
-      echo -e "  ${BCYAN}DISCOVERY  ${GRAY}→  ${BYELLOW}$subnet${NC}\n"
+      section "◈" "NETWORK DISCOVERY" "$BCYAN"
       discovery_scan "$subnet" || exit 1
-
-      echo -ne "  ${BMAGENTA}➤  Host number:${NC} "
+      echo -ne "  ${BYELLOW}➤${NC}  Select host number: "
       read -r sel
       TARGET=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f1)
       local thost tvendor
       thost=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f2)
       tvendor=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f3)
-      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}[!]${NC} Invalid selection.\n"; exit 1; }
+      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}✗${NC}  Invalid selection.\n"; exit 1; }
       validate_target
-
       local vcolor="$GRAY"
       [[ "$tvendor" =~ [Aa]pple ]] && vcolor="$BMAGENTA"
-      echo -e "\n  ${BGREEN}[✓]${NC} Target : ${BYELLOW}$TARGET${NC}  ${GRAY}$thost${NC}  ${vcolor}$tvendor${NC}\n"
+      echo -e "\n  ${BGREEN}✓${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}$thost${NC}  ${vcolor}$tvendor${NC}\n"
       ;;
     2)
-      echo -ne "\n  ${BMAGENTA}➤  IP / hostname:${NC} "
+      echo -ne "\n  ${BYELLOW}➤${NC}  IP / hostname: "
       read -r TARGET
-      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}[!]${NC} Nothing entered.\n"; exit 1; }
+      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}✗${NC}  Nothing entered.\n"; exit 1; }
       validate_target
-      echo -e "\n  ${BGREEN}[✓]${NC} Target : ${BYELLOW}$TARGET${NC}\n"
+      echo -e "\n  ${BGREEN}✓${NC}  Target set to ${BYELLOW}$TARGET${NC}\n"
       ;;
     *)
-      echo -e "\n  ${BRED}[!]${NC} Invalid option.\n"; exit 1 ;;
+      echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1 ;;
   esac
 }
 
 # ── Menu: Device type ─────────────────────────────────────────────────────────
 menu_device() {
-  header '\033[1;37;45m' 'DEVICE TYPE'
+  section "◆" "DEVICE TYPE" "$BCYAN"
   local i max
   max=$(get_profile_count)
   for i in $(seq 1 "$max"); do
@@ -112,90 +112,79 @@ menu_device() {
     printf "  ${BWHITE}[%s]${NC}  ${color}%-16s${NC}  ${GRAY}%s${NC}\n" "$i" "$name" "$desc"
   done
   echo ""
-  echo -ne "  ${BMAGENTA}➤  Selection:${NC} "
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
   read -r DEVICE_TYPE
 
   if ! [[ "$DEVICE_TYPE" =~ ^[0-9]+$ ]] || (( DEVICE_TYPE < 1 || DEVICE_TYPE > max )); then
-    echo -e "\n  ${BRED}[!]${NC} Invalid option.\n"; exit 1
+    echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1
   fi
   DEVICE_NAME=$(get_profile_name "$DEVICE_TYPE")
   DEVICE_COLOR=$(get_profile_color "$DEVICE_TYPE")
-  echo -e "\n  ${BGREEN}[✓]${NC} Profile : ${DEVICE_COLOR}${DEVICE_NAME}${NC}\n"
+  echo -e "\n  ${BGREEN}✓${NC}  Profile → ${DEVICE_COLOR}${DEVICE_NAME}${NC}\n"
 }
 
 # ── Menu: Noise level ─────────────────────────────────────────────────────────
 menu_stealth() {
-  header '\033[0;30;46m' 'NOISE LEVEL'
+  section "◆" "NOISE LEVEL" "$BCYAN"
   printf "  ${BWHITE}[1]${NC}  ${BGREEN}%-14s${NC}  ${GRAY}%s${NC}\n" "Silent"     "$(get_stealth_desc 1)"
   printf "  ${BWHITE}[2]${NC}  ${BYELLOW}%-14s${NC}  ${GRAY}%s${NC}\n" "Normal"     "$(get_stealth_desc 2)"
   printf "  ${BWHITE}[3]${NC}  ${BRED}%-14s${NC}  ${GRAY}%s${NC}\n"   "Aggressive" "$(get_stealth_desc 3)"
   echo ""
-  echo -ne "  ${BMAGENTA}➤  Selection:${NC} "
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
   read -r STEALTH_LEVEL
 
   if ! [[ "$STEALTH_LEVEL" =~ ^[1-3]$ ]]; then
-    echo -e "\n  ${BRED}[!]${NC} Invalid option.\n"; exit 1
+    echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1
   fi
   STEALTH_NAME=$(get_stealth_name "$STEALTH_LEVEL")
   STEALTH_FLAGS=$(get_stealth_flags "$STEALTH_LEVEL")
-  echo -e "\n  ${BGREEN}[✓]${NC} Mode : $(stealth_color "$STEALTH_LEVEL")${STEALTH_NAME}${NC}\n"
+  echo -e "\n  ${BGREEN}✓${NC}  Mode → $(stealth_color "$STEALTH_LEVEL")${STEALTH_NAME}${NC}\n"
 }
 
 # ── Menu: Scan depth ──────────────────────────────────────────────────────────
 menu_depth() {
-  header '\033[0;30;42m' 'SCAN DEPTH'
-  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Fast${NC}       ${GRAY}top 100 ports · fastest${NC}"
+  section "◆" "SCAN DEPTH" "$BCYAN"
+  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Fast${NC}       ${GRAY}top 100 ports · quickest${NC}"
   echo -e "  ${BWHITE}[2]${NC}  ${BYELLOW}Standard${NC}   ${GRAY}key ports for ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
-  echo -e "  ${BWHITE}[3]${NC}  ${BRED}Full${NC}       ${GRAY}all ports 1–65535 · slow${NC}\n"
-  echo -ne "  ${BMAGENTA}➤  Selection:${NC} "
+  echo -e "  ${BWHITE}[3]${NC}  ${BRED}Full${NC}       ${GRAY}all ports 1–65535 · slow but thorough${NC}\n"
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
   read -r DEPTH
 
   case "$DEPTH" in
-    1)
-      DEPTH_FLAGS="--top-ports 100"
-      DEPTH_NAME="Fast"
-      ;;
+    1) DEPTH_FLAGS="--top-ports 100" ; DEPTH_NAME="Fast" ;;
     2)
       local ports
       ports=$(get_profile_ports "$DEVICE_TYPE")
-      if [[ -n "$ports" ]]; then
-        DEPTH_FLAGS="-p $ports"
-      else
-        DEPTH_FLAGS="--top-ports 1000"
-      fi
+      DEPTH_FLAGS="${ports:+-p $ports}"
+      DEPTH_FLAGS="${DEPTH_FLAGS:---top-ports 1000}"
       DEPTH_NAME="Standard"
       ;;
-    3)
-      DEPTH_FLAGS="-p-"
-      DEPTH_NAME="Full"
-      ;;
-    *)
-      echo -e "\n  ${BRED}[!]${NC} Invalid option.\n"; exit 1 ;;
+    3) DEPTH_FLAGS="-p-" ; DEPTH_NAME="Full" ;;
+    *) echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1 ;;
   esac
-  echo -e "\n  ${BGREEN}[✓]${NC} Depth : ${BYELLOW}${DEPTH_NAME}${NC}\n"
+  echo -e "\n  ${BGREEN}✓${NC}  Depth → ${BYELLOW}${DEPTH_NAME}${NC}\n"
 }
 
 # ── Menu: Extras ──────────────────────────────────────────────────────────────
 menu_extras() {
-  header '\033[1;37;41m' 'OPTIONAL EXTRAS'
-  echo -e "  ${GRAY}Enter numbers separated by spaces  ·  0 = none${NC}\n"
-
-  echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-sV${NC}                          Service version detection"
-  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}-sC${NC}                          Default NSE scripts"
-  echo -e "  ${BWHITE}[3]${NC}  ${BCYAN}-O --osscan-guess${NC}            OS detection with aggressive guessing"
-  echo -e "  ${BWHITE}[4]${NC}  ${BCYAN}--script vuln${NC}                Known vulnerability scan"
-  echo -e "  ${BWHITE}[5]${NC}  ${BMAGENTA}--script afp,mdns,smb-os${NC}     Apple / Mac fingerprint${NC}"
+  section "◆" "OPTIONAL EXTRAS" "$BCYAN"
+  echo -e "  ${GRAY}Enter numbers separated by spaces  ·  0 or Enter = none${NC}\n"
+  echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-sV${NC}                        Service version detection"
+  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}-sC${NC}                        Default NSE scripts"
+  echo -e "  ${BWHITE}[3]${NC}  ${BCYAN}-O --osscan-guess${NC}          OS detection with aggressive guessing"
+  echo -e "  ${BWHITE}[4]${NC}  ${BCYAN}--script vuln${NC}              Known vulnerability scan"
+  echo -e "  ${BWHITE}[5]${NC}  ${BMAGENTA}--script afp,mdns,smb-os${NC}   Apple / Mac fingerprint${NC}"
 
   local profile_scripts
   profile_scripts=$(get_profile_scripts "$DEVICE_TYPE")
   [[ -n "$profile_scripts" ]] && \
-    echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}Recommended scripts for ${DEVICE_COLOR}${DEVICE_NAME}${NC}${BYELLOW}:${NC} ${GRAY}$profile_scripts${NC}"
+    echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}Profile scripts for ${DEVICE_COLOR}${DEVICE_NAME}${NC}${BYELLOW}:${NC}  ${GRAY}$profile_scripts${NC}"
 
   echo ""
   [[ "$STEALTH_LEVEL" == "1" ]] && \
-    echo -e "  ${BYELLOW}[!]${NC} Silent mode active — extras will increase noise\n"
+    echo -e "  ${BYELLOW}△${NC}  Silent mode active — extras will add noise\n"
 
-  echo -ne "  ${BMAGENTA}➤  Selection:${NC} "
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
   read -r raw_extras
 
   EXTRA_FLAGS=""
@@ -205,8 +194,7 @@ menu_extras() {
   for e in $raw_extras; do
     case "$e" in
       1)
-        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && \
-          EXTRA_FLAGS+=" -sV"
+        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV"
         ;;
       2) EXTRA_FLAGS+=" -sC" ;;
       3)
@@ -215,15 +203,80 @@ menu_extras() {
         ;;
       4)
         EXTRA_FLAGS+=" --script vuln"
-        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && \
-          EXTRA_FLAGS+=" -sV"
+        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV"
         ;;
       5) EXTRA_FLAGS+=" --script afp-info,mdns-dns-sd,smb-os-discovery" ;;
-      6)
-        [[ -n "$profile_scripts" ]] && EXTRA_FLAGS+=" --script $profile_scripts"
-        ;;
+      6) [[ -n "$profile_scripts" ]] && EXTRA_FLAGS+=" --script $profile_scripts" ;;
     esac
   done
+  echo ""
+}
+
+# ── Scan analysis & recommendations ──────────────────────────────────────────
+analyze_scan() {
+  local f="/tmp/en_scan_result.txt"
+  [[ ! -f "$f" ]] && return
+
+  local open_count host_down all_filtered os_detected os_unreliable
+  open_count=$(grep -cE "/(tcp|udp)[[:space:]]+open" "$f" 2>/dev/null || echo 0)
+  host_down=$(grep -c "Host seems down\|0 hosts up" "$f" 2>/dev/null || echo 0)
+  all_filtered=$(grep -cE "All [0-9]+ scanned ports.*filtered|Not shown: [0-9]+ filtered" "$f" 2>/dev/null || echo 0)
+  os_detected=$(grep -c "OS details:\|Running:" "$f" 2>/dev/null || echo 0)
+  os_unreliable=$(grep -c "OSScan results may be unreliable" "$f" 2>/dev/null || echo 0)
+
+  section "◈" "ANALYSIS" "$BYELLOW"
+
+  # ── Host down ──
+  if (( host_down > 0 )); then
+    echo -e "  ${BRED}✗${NC}  Host appears to be blocking ping probes\n"
+    echo -e "  ${BYELLOW}Recommendations:${NC}"
+    echo -e "  ${GRAY}  ›${NC} The host may be up but ignoring ICMP — try ${BCYAN}Aggressive${NC} mode (forces -Pn)"
+    echo -e "  ${GRAY}  ›${NC} Verify the target is actually online with: ${BGREEN}ping $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Force scan regardless of ping: ${BGREEN}sudo nmap -sS -Pn -p 80,443,22 $TARGET${NC}"
+    echo ""; return
+  fi
+
+  # ── All ports filtered ──
+  if (( all_filtered > 0 && open_count == 0 )); then
+    echo -e "  ${BYELLOW}△${NC}  All ports are filtered — a firewall is likely blocking probes\n"
+    echo -e "  ${BYELLOW}Recommendations:${NC}"
+    echo -e "  ${GRAY}  ›${NC} Switch to ${BYELLOW}Full${NC} depth + ${BRED}Aggressive${NC} noise and re-run"
+    echo -e "  ${GRAY}  ›${NC} Try packet fragmentation: ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Try ACK scan to map firewall rules: ${BGREEN}sudo nmap -sA -Pn $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Try UDP (bypasses some firewalls): ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
+    echo ""; return
+  fi
+
+  # ── No open ports (but not all filtered) ──
+  if (( open_count == 0 )); then
+    echo -e "  ${BYELLOW}△${NC}  No open ports found with this profile\n"
+    echo -e "  ${BYELLOW}Recommendations:${NC}"
+    echo -e "  ${GRAY}  ›${NC} Try ${BRED}Full${NC} depth to scan all 65535 ports"
+    echo -e "  ${GRAY}  ›${NC} Try a different device profile — the target may not match ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
+    echo -e "  ${GRAY}  ›${NC} Add UDP scan: ${BGREEN}sudo nmap -sU -Pn --top-ports 50 $TARGET${NC}"
+    echo ""; return
+  fi
+
+  # ── Ports found ──
+  echo -e "  ${BGREEN}✓${NC}  ${open_count} open port(s) found\n"
+
+  # OS
+  if (( os_unreliable > 0 )); then
+    echo -e "  ${BYELLOW}△${NC}  OS fingerprint unreliable — nmap needs more open/closed ports"
+    echo -e "  ${GRAY}  ›${NC} Re-run with ${BRED}Full${NC} depth for a more accurate OS guess"
+  elif (( os_detected > 0 )); then
+    echo -e "  ${BGREEN}✓${NC}  OS fingerprint captured"
+  elif [[ "$STEALTH_FLAGS" != *"-O"* && "$EXTRA_FLAGS" != *"-O"* ]]; then
+    echo -e "  ${GRAY}–${NC}  OS detection was not enabled"
+    echo -e "  ${GRAY}  ›${NC} Re-run and add extra ${BCYAN}[3] -O --osscan-guess${NC}"
+  fi
+
+  # Versions
+  if [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]]; then
+    echo -e "  ${GRAY}–${NC}  Service versions were not detected"
+    echo -e "  ${GRAY}  ›${NC} Re-run and add extra ${BCYAN}[1] -sV${NC} to fingerprint running software"
+  fi
+
   echo ""
 }
 
@@ -231,31 +284,36 @@ menu_extras() {
 compose_and_run() {
   local cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn${EXTRA_FLAGS} $TARGET"
 
-  echo -e "\n${BWHITE}  ╔══════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BWHITE}  ║${NC}  ${BYELLOW}◈  SCAN SUMMARY${NC}                                                    ${BWHITE}║${NC}"
-  echo -e "${BWHITE}  ╠══════════════════════════════════════════════════════════════════════╣${NC}"
-  printf "${BWHITE}  ║${NC}  ${GRAY}%-13s${NC}  ${BYELLOW}%-54s${BWHITE}║${NC}\n" "Target:"    "$TARGET"
-  printf "${BWHITE}  ║${NC}  ${GRAY}%-13s${NC}  ${DEVICE_COLOR}%-54s${BWHITE}║${NC}\n" "Device:"     "$DEVICE_NAME"
-  printf "${BWHITE}  ║${NC}  ${GRAY}%-13s${NC}  $(stealth_color "$STEALTH_LEVEL")%-54s${BWHITE}║${NC}\n" "Noise:"  "$STEALTH_NAME"
-  printf "${BWHITE}  ║${NC}  ${GRAY}%-13s${NC}  ${WHITE}%-54s${BWHITE}║${NC}\n" "Depth:"      "$DEPTH_NAME"
-  echo -e "${BWHITE}  ╠══════════════════════════════════════════════════════════════════════╣${NC}"
-  echo -e "${BWHITE}  ║${NC}  ${BCYAN}Command:${NC}                                                              ${BWHITE}║${NC}"
-  echo -e "${BWHITE}  ║${NC}  ${BGREEN}$cmd${NC}"
-  echo -e "${BWHITE}  ╚══════════════════════════════════════════════════════════════════════╝${NC}\n"
+  section "◈" "SCAN SUMMARY" "$BWHITE"
 
-  echo -ne "  ${BMAGENTA}➤  Execute? ${GRAY}[y/N]${NC}: "
+  printf "  ${GRAY}%-14s${NC}  ${BYELLOW}%s${NC}\n"                          "Target"      "$TARGET"
+  printf "  ${GRAY}%-14s${NC}  ${DEVICE_COLOR}%s${NC}\n"                     "Device"      "$DEVICE_NAME"
+  printf "  ${GRAY}%-14s${NC}  $(stealth_color "$STEALTH_LEVEL")%s${NC}\n"   "Noise"       "$STEALTH_NAME"
+  printf "  ${GRAY}%-14s${NC}  ${WHITE}%s${NC}\n"                            "Depth"       "$DEPTH_NAME"
+  echo ""
+  echo -e "  ${GRAY}Command${NC}"
+  echo -e "  ${GRAY}  ┌────────────────────────────────────────────────────────────────${NC}"
+  echo -e "  ${GRAY}  │${NC}  ${BGREEN}$cmd${NC}"
+  echo -e "  ${GRAY}  └────────────────────────────────────────────────────────────────${NC}"
+  echo ""
+  echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
   read -r confirm
   [[ "$confirm" != "y" && "$confirm" != "Y" ]] && {
-    echo -e "\n  ${BYELLOW}[~]${NC} Cancelled.\n"; exit 0
+    echo -e "\n  ${GRAY}Cancelled.${NC}\n"; exit 0
   }
 
-  echo -e "\n$SEP"
-  echo -e "  ${BCYAN}SCANNING  ${GRAY}→  ${BYELLOW}$TARGET${NC}"
-  echo -e "$SEP\n"
-  eval "$cmd"
-  echo -e "\n$SEP"
-  echo -e "  ${BGREEN}[✓] Scan complete.${NC}"
-  echo -e "$SEP\n"
+  echo ""
+  echo -e "$LINE"
+  echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}"
+  echo -e "$LINE\n"
+
+  eval "$cmd" | tee /tmp/en_scan_result.txt
+  echo ""
+  echo -e "$LINE"
+  echo -e "  ${BGREEN}✓${NC}  Scan complete."
+  echo -e "$LINE"
+
+  analyze_scan
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

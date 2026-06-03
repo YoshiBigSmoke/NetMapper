@@ -3,7 +3,7 @@
 
 discovery_scan() {
   local subnet="$1"
-  echo -e "\n  ${BCYAN}[+]${NC} Scanning ${BYELLOW}$subnet${NC} ...\n"
+  echo -e "\n  ${GRAY}Scanning ${BYELLOW}$subnet${GRAY} for live hosts...${NC}\n"
 
   # Hosts with visible MAC (remote devices)
   sudo nmap -sn -PR --resolve-all "$subnet" 2>/dev/null | awk '
@@ -44,21 +44,21 @@ discovery_scan() {
   rm -f /tmp/en_live_hosts.tmp
 
   if [[ ! -s /tmp/en_live_hosts.txt ]]; then
-    echo -e "  ${BRED}[!]${NC} No hosts found on ${BYELLOW}$subnet${NC}\n"
+    echo -e "  ${BRED}✗${NC}  No hosts found on ${BYELLOW}$subnet${NC}\n"
     return 1
   fi
 
   local count
   count=$(wc -l < /tmp/en_live_hosts.txt)
-  echo -e "  ${BGREEN}[✓]${NC} ${BWHITE}$count host(s) found${NC}\n"
-  echo -e "  ${GRAY}  #    IP                  HOSTNAME                        VENDOR${NC}"
-  echo -e "$SEP"
+  echo -e "  ${BGREEN}✓${NC}  ${BWHITE}$count host(s) found${NC}\n"
+  printf "  ${GRAY}  %-5s %-20s %-34s %s${NC}\n" "#" "IP" "HOSTNAME" "VENDOR"
+  echo -e "  ${GRAY}  ─────────────────────────────────────────────────────────────────${NC}"
 
   local i=1
   while IFS='|' read -r ip host vendor; do
     local vendor_color="$GRAY"
     [[ "$vendor" =~ [Aa]pple ]] && vendor_color="$BMAGENTA"
-    printf "  ${BWHITE}%-5s${NC} ${BYELLOW}%-20s${NC} ${CYAN}%-32s${NC} ${vendor_color}%s${NC}\n" \
+    printf "  ${BWHITE}  %-5s${NC} ${BYELLOW}%-20s${NC} ${CYAN}%-34s${NC} ${vendor_color}%s${NC}\n" \
       "$i." "$ip" "$host" "$vendor"
     ((i++))
   done < /tmp/en_live_hosts.txt
