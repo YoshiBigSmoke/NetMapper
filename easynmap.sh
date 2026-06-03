@@ -56,208 +56,243 @@ get_local_ip() {
 # ── Validate target ───────────────────────────────────────────────────────────
 validate_target() {
   if [[ ! "$TARGET" =~ ^[a-zA-Z0-9._:/\-]+$ ]]; then
-    echo -e "\n  ${BRED}✗${NC}  Invalid target: '${TARGET}'\n"
-    exit 1
+    echo -e "  ${BRED}✗${NC}  Invalid target: '${TARGET}'\n"
+    return 1
   fi
+  return 0
 }
 
 # ── Menu: Target ──────────────────────────────────────────────────────────────
+# Returns: 0 = target set, 1 = back (exit program)
 menu_target() {
-  section "◆" "TARGET" "$BCYAN"
-  echo -e "  ${GRAY}Local IP${NC}  ${BYELLOW}$LOCAL_IP${NC}  ${GRAY}via ${BWHITE}$IFACE${NC}\n"
-  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Scan my network${NC}   ${GRAY}→  discover all hosts on ${LOCAL_IP%.*}.0/24${NC}"
-  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}Specific target${NC}   ${GRAY}→  enter IP or hostname manually${NC}\n"
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r opt
+  while true; do
+    section "◆" "TARGET" "$BCYAN"
+    echo -e "  ${GRAY}Local IP${NC}  ${BYELLOW}$LOCAL_IP${NC}  ${GRAY}via ${BWHITE}$IFACE${NC}\n"
+    echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Scan my network${NC}   ${GRAY}→  discover all hosts on ${LOCAL_IP%.*}.0/24${NC}"
+    echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}Specific target${NC}   ${GRAY}→  enter IP or hostname manually${NC}"
+    echo -e "  ${BWHITE}[0]${NC}  ${GRAY}Exit${NC}\n"
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r opt
 
-  case "$opt" in
-    1)
-      local subnet="${LOCAL_IP%.*}.0/24"
-      section "◈" "NETWORK DISCOVERY" "$BCYAN"
-      discovery_scan "$subnet" || exit 1
-      echo -ne "  ${BYELLOW}➤${NC}  Select host number: "
-      read -r sel
-      TARGET=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f1)
-      local thost tvendor
-      thost=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f2)
-      tvendor=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f3)
-      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}✗${NC}  Invalid selection.\n"; exit 1; }
-      validate_target
-      local vcolor="$GRAY"
-      [[ "$tvendor" =~ [Aa]pple ]] && vcolor="$BMAGENTA"
-      echo -e "\n  ${BGREEN}✓${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}$thost${NC}  ${vcolor}$tvendor${NC}\n"
-      ;;
-    2)
-      echo -ne "\n  ${BYELLOW}➤${NC}  IP / hostname: "
-      read -r TARGET
-      [[ -z "$TARGET" ]] && { echo -e "\n  ${BRED}✗${NC}  Nothing entered.\n"; exit 1; }
-      validate_target
-      echo -e "\n  ${BGREEN}✓${NC}  Target set to ${BYELLOW}$TARGET${NC}\n"
-      ;;
-    *)
-      echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1 ;;
-  esac
+    case "$opt" in
+      0) return 1 ;;
+      1)
+        local subnet="${LOCAL_IP%.*}.0/24"
+        section "◈" "NETWORK DISCOVERY" "$BCYAN"
+        if ! discovery_scan "$subnet"; then
+          echo -e "  ${BRED}✗${NC}  Discovery failed. Try again.\n"
+          continue
+        fi
+        while true; do
+          echo -ne "  ${BYELLOW}➤${NC}  Select host number (b = back): "
+          read -r sel
+          [[ "$sel" == "b" || "$sel" == "B" ]] && break
+          TARGET=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f1)
+          if [[ -z "$TARGET" ]]; then
+            echo -e "  ${BRED}✗${NC}  Invalid number — try again\n"
+            continue
+          fi
+          local thost tvendor
+          thost=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f2)
+          tvendor=$(sed -n "${sel}p" /tmp/en_live_hosts.txt | cut -d'|' -f3)
+          validate_target || continue
+          local vcolor="$GRAY"
+          [[ "$tvendor" =~ [Aa]pple ]] && vcolor="$BMAGENTA"
+          echo -e "\n  ${BGREEN}✓${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}$thost${NC}  ${vcolor}$tvendor${NC}\n"
+          return 0
+        done
+        ;;
+      2)
+        while true; do
+          echo -ne "\n  ${BYELLOW}➤${NC}  IP / hostname (b = back): "
+          read -r TARGET
+          [[ "$TARGET" == "b" || "$TARGET" == "B" ]] && break
+          [[ -z "$TARGET" ]] && { echo -e "  ${BRED}✗${NC}  Nothing entered\n"; continue; }
+          validate_target || continue
+          echo -e "\n  ${BGREEN}✓${NC}  Target set to ${BYELLOW}$TARGET${NC}\n"
+          return 0
+        done
+        ;;
+      *)
+        echo -e "  ${BRED}✗${NC}  Enter 1, 2 or 0\n"
+        ;;
+    esac
+  done
 }
 
 # ── Menu: Device type ─────────────────────────────────────────────────────────
+# Returns: 0 = selected, 1 = back
 menu_device() {
-  section "◆" "DEVICE TYPE" "$BCYAN"
-  local i max
+  local max
   max=$(get_profile_count)
-  for i in $(seq 1 "$max"); do
-    local color name desc
-    color=$(get_profile_color "$i")
-    name=$(get_profile_name "$i")
-    desc=$(get_profile_desc "$i")
-    printf "  ${BWHITE}[%s]${NC}  ${color}%-16s${NC}  ${GRAY}%s${NC}\n" "$i" "$name" "$desc"
-  done
-  echo ""
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r DEVICE_TYPE
+  while true; do
+    section "◆" "DEVICE TYPE" "$BCYAN"
+    local i
+    for i in $(seq 1 "$max"); do
+      printf "  ${BWHITE}[%2s]${NC}  $(get_profile_color "$i")%-16s${NC}  ${GRAY}%s${NC}\n" \
+        "$i" "$(get_profile_name "$i")" "$(get_profile_desc "$i")"
+    done
+    echo -e "\n  ${BWHITE}[ b]${NC}  ${GRAY}Back${NC}\n"
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r DEVICE_TYPE
 
-  if ! [[ "$DEVICE_TYPE" =~ ^[0-9]+$ ]] || (( DEVICE_TYPE < 1 || DEVICE_TYPE > max )); then
-    echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1
-  fi
-  DEVICE_NAME=$(get_profile_name "$DEVICE_TYPE")
-  DEVICE_COLOR=$(get_profile_color "$DEVICE_TYPE")
-  echo -e "\n  ${BGREEN}✓${NC}  Profile → ${DEVICE_COLOR}${DEVICE_NAME}${NC}\n"
+    [[ "$DEVICE_TYPE" == "b" || "$DEVICE_TYPE" == "B" ]] && return 1
+    if [[ "$DEVICE_TYPE" =~ ^[0-9]+$ ]] && (( DEVICE_TYPE >= 1 && DEVICE_TYPE <= max )); then
+      DEVICE_NAME=$(get_profile_name "$DEVICE_TYPE")
+      DEVICE_COLOR=$(get_profile_color "$DEVICE_TYPE")
+      echo -e "\n  ${BGREEN}✓${NC}  Profile → ${DEVICE_COLOR}${DEVICE_NAME}${NC}\n"
+      return 0
+    fi
+    echo -e "  ${BRED}✗${NC}  Enter 1–$max or b\n"
+  done
 }
 
 # ── Menu: Noise level ─────────────────────────────────────────────────────────
+# Returns: 0 = selected, 1 = back
 menu_stealth() {
-  section "◆" "NOISE LEVEL" "$BCYAN"
-  printf "  ${BWHITE}[1]${NC}  ${BGREEN}%-14s${NC}  ${GRAY}%s${NC}\n" "Silent"     "$(get_stealth_desc 1)"
-  printf "  ${BWHITE}[2]${NC}  ${BYELLOW}%-14s${NC}  ${GRAY}%s${NC}\n" "Normal"     "$(get_stealth_desc 2)"
-  printf "  ${BWHITE}[3]${NC}  ${BRED}%-14s${NC}  ${GRAY}%s${NC}\n"   "Aggressive" "$(get_stealth_desc 3)"
-  echo ""
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r STEALTH_LEVEL
+  while true; do
+    section "◆" "NOISE LEVEL" "$BCYAN"
+    printf "  ${BWHITE}[1]${NC}  ${BGREEN}%-14s${NC}  ${GRAY}%s${NC}\n" "Silent"     "$(get_stealth_desc 1)"
+    printf "  ${BWHITE}[2]${NC}  ${BYELLOW}%-14s${NC}  ${GRAY}%s${NC}\n" "Normal"     "$(get_stealth_desc 2)"
+    printf "  ${BWHITE}[3]${NC}  ${BRED}%-14s${NC}  ${GRAY}%s${NC}\n"   "Aggressive" "$(get_stealth_desc 3)"
+    echo -e "\n  ${BWHITE}[b]${NC}  ${GRAY}Back${NC}\n"
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r STEALTH_LEVEL
 
-  if ! [[ "$STEALTH_LEVEL" =~ ^[1-3]$ ]]; then
-    echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1
-  fi
-  STEALTH_NAME=$(get_stealth_name "$STEALTH_LEVEL")
-  STEALTH_FLAGS=$(get_stealth_flags "$STEALTH_LEVEL")
-  echo -e "\n  ${BGREEN}✓${NC}  Mode → $(stealth_color "$STEALTH_LEVEL")${STEALTH_NAME}${NC}\n"
+    [[ "$STEALTH_LEVEL" == "b" || "$STEALTH_LEVEL" == "B" ]] && return 1
+    if [[ "$STEALTH_LEVEL" =~ ^[1-3]$ ]]; then
+      STEALTH_NAME=$(get_stealth_name "$STEALTH_LEVEL")
+      STEALTH_FLAGS=$(get_stealth_flags "$STEALTH_LEVEL")
+      echo -e "\n  ${BGREEN}✓${NC}  Mode → $(stealth_color "$STEALTH_LEVEL")${STEALTH_NAME}${NC}\n"
+      return 0
+    fi
+    echo -e "  ${BRED}✗${NC}  Enter 1, 2, 3 or b\n"
+  done
 }
 
 # ── Menu: Scan depth ──────────────────────────────────────────────────────────
+# Returns: 0 = selected, 1 = back
 menu_depth() {
-  section "◆" "SCAN DEPTH" "$BCYAN"
-  echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Fast${NC}       ${GRAY}top 100 ports · quickest${NC}"
-  echo -e "  ${BWHITE}[2]${NC}  ${BYELLOW}Standard${NC}   ${GRAY}key ports for ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
-  echo -e "  ${BWHITE}[3]${NC}  ${BRED}Full${NC}       ${GRAY}all ports 1–65535 · slow but thorough${NC}\n"
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r DEPTH
+  while true; do
+    section "◆" "SCAN DEPTH" "$BCYAN"
+    echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}Fast${NC}       ${GRAY}top 100 ports · quickest${NC}"
+    echo -e "  ${BWHITE}[2]${NC}  ${BYELLOW}Standard${NC}   ${GRAY}key ports for ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
+    echo -e "  ${BWHITE}[3]${NC}  ${BRED}Full${NC}       ${GRAY}all ports 1–65535 · slow but thorough${NC}"
+    echo -e "\n  ${BWHITE}[b]${NC}  ${GRAY}Back${NC}\n"
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r DEPTH
 
-  case "$DEPTH" in
-    1) DEPTH_FLAGS="--top-ports 100" ; DEPTH_NAME="Fast" ;;
-    2)
-      local ports
-      ports=$(get_profile_ports "$DEVICE_TYPE")
-      DEPTH_FLAGS="${ports:+-p $ports}"
-      DEPTH_FLAGS="${DEPTH_FLAGS:---top-ports 1000}"
-      DEPTH_NAME="Standard"
-      ;;
-    3) DEPTH_FLAGS="-p-" ; DEPTH_NAME="Full" ;;
-    *) echo -e "\n  ${BRED}✗${NC}  Invalid option.\n"; exit 1 ;;
-  esac
-  echo -e "\n  ${BGREEN}✓${NC}  Depth → ${BYELLOW}${DEPTH_NAME}${NC}\n"
+    [[ "$DEPTH" == "b" || "$DEPTH" == "B" ]] && return 1
+    case "$DEPTH" in
+      1) DEPTH_FLAGS="--top-ports 100" ; DEPTH_NAME="Fast"     ;;
+      2)
+        local ports
+        ports=$(get_profile_ports "$DEVICE_TYPE")
+        DEPTH_FLAGS="${ports:+-p $ports}"
+        DEPTH_FLAGS="${DEPTH_FLAGS:---top-ports 1000}"
+        DEPTH_NAME="Standard"
+        ;;
+      3) DEPTH_FLAGS="-p-" ; DEPTH_NAME="Full" ;;
+      *) echo -e "  ${BRED}✗${NC}  Enter 1, 2, 3 or b\n"; continue ;;
+    esac
+    echo -e "\n  ${BGREEN}✓${NC}  Depth → ${BYELLOW}${DEPTH_NAME}${NC}\n"
+    return 0
+  done
 }
 
 # ── Menu: Extras ──────────────────────────────────────────────────────────────
+# Returns: 0 = done, 1 = back
 menu_extras() {
-  section "◆" "OPTIONAL EXTRAS" "$BCYAN"
-  echo -e "  ${GRAY}Enter numbers separated by spaces  ·  0 or Enter = none${NC}\n"
-  echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-sV${NC}                        Service version detection"
-  echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}-sC${NC}                        Default NSE scripts"
-  echo -e "  ${BWHITE}[3]${NC}  ${BCYAN}-O --osscan-guess${NC}          OS detection with aggressive guessing"
-  echo -e "  ${BWHITE}[4]${NC}  ${BCYAN}--script vuln${NC}              Known vulnerability scan"
-  echo -e "  ${BWHITE}[5]${NC}  ${BMAGENTA}--script afp,mdns,smb-os${NC}   Apple / Mac fingerprint${NC}"
+  while true; do
+    section "◆" "OPTIONAL EXTRAS" "$BCYAN"
+    echo -e "  ${GRAY}Numbers separated by spaces  ·  0 or Enter = none${NC}\n"
+    echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-sV${NC}                        Service version detection"
+    echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}-sC${NC}                        Default NSE scripts"
+    echo -e "  ${BWHITE}[3]${NC}  ${BCYAN}-O --osscan-guess${NC}          OS detection + aggressive guess"
+    echo -e "  ${BWHITE}[4]${NC}  ${BCYAN}--script vuln${NC}              Known vulnerability scan"
+    echo -e "  ${BWHITE}[5]${NC}  ${BMAGENTA}--script afp,mdns,smb-os${NC}   Apple / Mac fingerprint${NC}"
 
-  local profile_scripts
-  profile_scripts=$(get_profile_scripts "$DEVICE_TYPE")
-  [[ -n "$profile_scripts" ]] && \
-    echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}Profile scripts for ${DEVICE_COLOR}${DEVICE_NAME}${NC}${BYELLOW}:${NC}  ${GRAY}$profile_scripts${NC}"
+    local profile_scripts
+    profile_scripts=$(get_profile_scripts "$DEVICE_TYPE")
+    [[ -n "$profile_scripts" ]] && \
+      echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}Profile scripts for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}  ${GRAY}$profile_scripts${NC}"
 
-  echo ""
-  [[ "$STEALTH_LEVEL" == "1" ]] && \
-    echo -e "  ${BYELLOW}△${NC}  Silent mode active — extras will add noise\n"
+    echo -e "\n  ${BWHITE}[b]${NC}  ${GRAY}Back${NC}\n"
+    [[ "$STEALTH_LEVEL" == "1" ]] && \
+      echo -e "  ${BYELLOW}△${NC}  Silent mode active — extras will increase noise\n"
 
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r raw_extras
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r raw_extras
 
-  EXTRA_FLAGS=""
-  [[ "$raw_extras" == "0" || -z "$raw_extras" ]] && { echo ""; return; }
+    [[ "$raw_extras" == "b" || "$raw_extras" == "B" ]] && return 1
 
-  local e
-  for e in $raw_extras; do
-    case "$e" in
-      1)
-        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV"
-        ;;
-      2) EXTRA_FLAGS+=" -sC" ;;
-      3)
-        [[ "$STEALTH_FLAGS" != *"-O"* && "$EXTRA_FLAGS" != *"-O"* ]] && \
-          EXTRA_FLAGS+=" -O --osscan-guess"
-        ;;
-      4)
-        EXTRA_FLAGS+=" --script vuln"
-        [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV"
-        ;;
-      5) EXTRA_FLAGS+=" --script afp-info,mdns-dns-sd,smb-os-discovery" ;;
-      6) [[ -n "$profile_scripts" ]] && EXTRA_FLAGS+=" --script $profile_scripts" ;;
-    esac
+    EXTRA_FLAGS=""
+    [[ "$raw_extras" == "0" || -z "$raw_extras" ]] && return 0
+
+    local e
+    for e in $raw_extras; do
+      case "$e" in
+        1) [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV" ;;
+        2) EXTRA_FLAGS+=" -sC" ;;
+        3) [[ "$STEALTH_FLAGS" != *"-O"* && "$EXTRA_FLAGS" != *"-O"* ]] && EXTRA_FLAGS+=" -O --osscan-guess" ;;
+        4)
+          EXTRA_FLAGS+=" --script vuln"
+          [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]] && EXTRA_FLAGS+=" -sV"
+          ;;
+        5) EXTRA_FLAGS+=" --script afp-serverinfo,dns-service-discovery,smb-os-discovery" ;;
+        6) [[ -n "$profile_scripts" ]] && EXTRA_FLAGS+=" --script $profile_scripts" ;;
+      esac
+    done
+    return 0
   done
-  echo ""
 }
 
-# ── Device-specific tips (shown when scan fails) ──────────────────────────────
+# ── Device-specific tips ──────────────────────────────────────────────────────
 get_device_tips() {
   case "$1" in
-    1) # Mac
-      echo -e "  ${BMAGENTA}  ›${NC} Mac: check ${BWHITE}System Settings → Sharing → File Sharing${NC} (opens AFP port 548)"
-      echo -e "  ${BMAGENTA}  ›${NC} Mac: Bonjour always runs on UDP 5353 — try: ${BGREEN}sudo nmap -sU -Pn -p 5353 $TARGET${NC}"
-      echo -e "  ${BMAGENTA}  ›${NC} Mac: enable ${BWHITE}Remote Login${NC} in System Settings to open SSH (port 22)"
+    1)
+      echo -e "  ${BMAGENTA}  ›${NC} Mac: check ${BWHITE}System Settings → Sharing → File Sharing${NC} (opens AFP 548)"
+      echo -e "  ${BMAGENTA}  ›${NC} Mac: Bonjour runs on UDP 5353 — try: ${BGREEN}sudo nmap -sU -Pn -p 5353 $TARGET${NC}"
+      echo -e "  ${BMAGENTA}  ›${NC} Mac: enable ${BWHITE}Remote Login${NC} to open SSH (port 22)"
       ;;
-    2|3) # iPhone / iPad
-      echo -e "  ${BCYAN}  ›${NC} iOS/iPadOS: ${BYELLOW}wake the screen${NC} — iOS closes most ports when locked"
+    2|3)
+      echo -e "  ${BCYAN}  ›${NC} iOS/iPadOS: ${BYELLOW}wake the screen${NC} — iOS closes ports when locked"
       echo -e "  ${BCYAN}  ›${NC} iOS/iPadOS: only lockdownd (62078) may stay open when screen is off"
-      echo -e "  ${BCYAN}  ›${NC} iOS/iPadOS: if a ${BWHITE}'Trust This Computer'${NC} prompt appears — tap Trust"
-      echo -e "  ${BCYAN}  ›${NC} Confirm it's reachable: ${BGREEN}sudo arping -c 3 $TARGET${NC}"
+      echo -e "  ${BCYAN}  ›${NC} iOS/iPadOS: tap ${BWHITE}'Trust This Computer'${NC} if a prompt appears"
+      echo -e "  ${BCYAN}  ›${NC} Confirm reachable: ${BGREEN}sudo arping -c 3 $TARGET${NC}"
       ;;
-    4) # Windows
-      echo -e "  ${BBLUE}  ›${NC} Windows: Defender Firewall blocks ICMP by default — already using -Pn"
-      echo -e "  ${BBLUE}  ›${NC} Windows: SMB (445) may be blocked on Windows 11 — try NetBIOS (139)"
+    4)
+      echo -e "  ${BBLUE}  ›${NC} Windows: Defender blocks ICMP — already using -Pn to skip ping"
+      echo -e "  ${BBLUE}  ›${NC} Windows: SMB (445) may be blocked — try NetBIOS (139) instead"
       echo -e "  ${BBLUE}  ›${NC} Windows: check ${BWHITE}Settings → Network → Network discovery${NC} is ON"
       ;;
-    5) # Linux
+    5)
       echo -e "  ${BGREEN}  ›${NC} Linux: SSH (22) is almost always open — try: ${BGREEN}sudo nmap -sS -Pn -p 22 $TARGET${NC}"
-      echo -e "  ${BGREEN}  ›${NC} Linux: iptables/ufw may be blocking — try spoofed source: ${BGREEN}--source-port 53${NC}"
+      echo -e "  ${BGREEN}  ›${NC} Linux: iptables/ufw may block — try: ${BGREEN}--source-port 53${NC}"
       ;;
-    6) # Server
+    6)
       echo -e "  ${BYELLOW}  ›${NC} Server: cloud providers (AWS/GCP/Azure) have security groups — check inbound rules"
-      echo -e "  ${BYELLOW}  ›${NC} Server: try spoofed DNS source port: ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}"
+      echo -e "  ${BYELLOW}  ›${NC} Server: try spoofed source port: ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}"
       ;;
-    7) # Android
+    7)
       echo -e "  ${GREEN}  ›${NC} Android: enable ${BWHITE}Developer Options → USB Debugging${NC} for ADB (port 5555)"
-      echo -e "  ${GREEN}  ›${NC} Android: ADB over Wi-Fi must be enabled explicitly — check device settings"
-      echo -e "  ${GREEN}  ›${NC} Test ADB directly: ${BGREEN}adb connect $TARGET:5555${NC}"
+      echo -e "  ${GREEN}  ›${NC} Android: ADB over Wi-Fi must be enabled explicitly in device settings"
+      echo -e "  ${GREEN}  ›${NC} Test ADB: ${BGREEN}adb connect $TARGET:5555${NC}"
       ;;
-    8) # IoT
+    8)
       echo -e "  ${RED}  ›${NC} IoT: many devices only expose HTTP (80/8080) or Telnet (23)"
-      echo -e "  ${RED}  ›${NC} IoT: check if on same VLAN — AP isolation may block device-to-device traffic"
-      echo -e "  ${RED}  ›${NC} IoT: try SNMP: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
+      echo -e "  ${RED}  ›${NC} IoT: check if AP isolation is blocking device-to-device traffic"
+      echo -e "  ${RED}  ›${NC} SNMP: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
       ;;
-    9) # Printer
+    9)
       echo -e "  ${BLUE}  ›${NC} Printer: main ports are 9100 (JetDirect), 515 (LPD), 631 (IPP)"
-      echo -e "  ${BLUE}  ›${NC} Printer: SNMP gives model/status: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
-      echo -e "  ${BLUE}  ›${NC} Printer: try the web interface: ${BGREEN}curl -s http://$TARGET | head -5${NC}"
+      echo -e "  ${BLUE}  ›${NC} SNMP gives model/status: ${BGREEN}sudo nmap -sU -Pn -p 161 --script snmp-sysdescr $TARGET${NC}"
+      echo -e "  ${BLUE}  ›${NC} Check web interface: ${BGREEN}curl -s http://$TARGET | head -5${NC}"
       ;;
   esac
 }
 
-# ── Best rescue command per device when initial scan fails ─────────────────────
+# ── Device-specific rescue command ────────────────────────────────────────────
 get_device_rescue_cmd() {
   case "$1" in
     1)  echo "sudo nmap -A -Pn -p 22,445,548,5353 --script afp-serverinfo,smb-os-discovery,dns-service-discovery $TARGET" ;;
@@ -277,7 +312,6 @@ get_device_rescue_cmd() {
 auto_retry() {
   local rescue_cmd
   rescue_cmd=$(get_device_rescue_cmd "$DEVICE_TYPE")
-
   echo ""
   echo -e "  ${GRAY}  ┌────────────────────────────────────────────────────────────────${NC}"
   echo -e "  ${GRAY}  │${NC}  ${BGREEN}$rescue_cmd${NC}"
@@ -297,12 +331,12 @@ auto_retry() {
   echo -e "$LINE"
   echo -e "  ${BGREEN}✓${NC}  Retry complete."
   echo -e "$LINE"
-  analyze_scan "$retry_tmp" 0   # no_retry=1 to avoid infinite loop
+  analyze_scan "$retry_tmp" 0
   rm -f "$retry_tmp"
 }
 
-# ── Scan analysis & recommendations ──────────────────────────────────────────
-# $1 = result file   $2 = 0 to suppress auto-retry (used after a retry itself)
+# ── Scan analysis ─────────────────────────────────────────────────────────────
+# $1 = result file   $2 = 0 to suppress auto-retry
 analyze_scan() {
   local f="$1" allow_retry="${2:-1}"
   [[ ! -f "$f" ]] && return
@@ -318,38 +352,35 @@ analyze_scan() {
 
   section "◈" "ANALYSIS" "$BYELLOW"
 
-  # ── Host unreachable ──
   if (( host_down > 0 )); then
     echo -e "  ${BRED}✗${NC}  Target returned 0 hosts up — unreachable or ports blocked\n"
     get_device_tips "$DEVICE_TYPE"
     echo ""
     echo -e "  ${BYELLOW}General fixes:${NC}"
-    echo -e "  ${GRAY}  ›${NC} Confirm it's online: ${BGREEN}ping -c 3 $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Spoof DNS source port: ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Fragment packets:      ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Confirm online: ${BGREEN}ping -c 3 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Spoof DNS port:  ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Fragment:        ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
     echo ""
     echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
     (( allow_retry )) && auto_retry
     return
   fi
 
-  # ── All ports filtered ──
   if (( all_filtered > 0 && open_count == 0 )); then
     echo -e "  ${BYELLOW}△${NC}  All ports filtered — firewall dropping probe packets\n"
     get_device_tips "$DEVICE_TYPE"
     echo ""
     echo -e "  ${BYELLOW}General fixes:${NC}"
-    echo -e "  ${GRAY}  ›${NC} Fragment: ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} ACK scan: ${BGREEN}sudo nmap -sA -Pn $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} UDP:      ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Full + aggressive: ${BGREEN}sudo nmap -A -Pn -p- --min-rate 500 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Fragment:   ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} ACK scan:   ${BGREEN}sudo nmap -sA -Pn $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} UDP:        ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
+    echo -e "  ${GRAY}  ›${NC} Full + -A:  ${BGREEN}sudo nmap -A -Pn -p- --min-rate 500 $TARGET${NC}"
     echo ""
     echo -e "  ${BYELLOW}Best rescue scan for ${DEVICE_COLOR}${DEVICE_NAME}${BYELLOW}:${NC}"
     (( allow_retry )) && auto_retry
     return
   fi
 
-  # ── No open ports ──
   if (( open_count == 0 )); then
     echo -e "  ${BYELLOW}△${NC}  No open ports found with this profile\n"
     get_device_tips "$DEVICE_TYPE"
@@ -363,7 +394,6 @@ analyze_scan() {
     return
   fi
 
-  # ── Ports found ──
   echo -e "  ${BGREEN}✓${NC}  ${open_count} open port(s) found\n"
 
   if (( os_unreliable > 0 )); then
@@ -371,29 +401,26 @@ analyze_scan() {
   elif (( os_detected > 0 )); then
     echo -e "  ${BGREEN}✓${NC}  OS fingerprint captured"
   elif [[ "$STEALTH_FLAGS" != *"-O"* && "$EXTRA_FLAGS" != *"-O"* ]]; then
-    echo -e "  ${GRAY}–${NC}  No OS detection — retry with: ${BGREEN}sudo nmap -A -Pn $TARGET${NC}"
+    echo -e "  ${GRAY}–${NC}  No OS detection — add: ${BGREEN}sudo nmap -A -Pn $TARGET${NC}"
   fi
 
   if [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]]; then
-    echo -e "  ${GRAY}–${NC}  No version detection — retry with: ${BGREEN}sudo nmap -sV -Pn $TARGET${NC}"
+    echo -e "  ${GRAY}–${NC}  No version detection — add: ${BGREEN}sudo nmap -sV -Pn $TARGET${NC}"
   fi
 
   echo ""
 }
 
-# ── Quick retry menu (device-aware) ───────────────────────────────────────────
-offer_retry() {
-  section "◈" "QUICK RETRY" "$BCYAN"
-  echo -e "  ${GRAY}Follow-up scans without going through all menus again${NC}\n"
-
+# ── Post-scan menu — stays alive until user decides ───────────────────────────
+# Returns: 0=exit  1=new scan  2=same target  3=re-run  4=custom retry
+post_scan_menu() {
   local is_apple=0
   [[ "$DEVICE_TYPE" =~ ^[123]$ ]] && is_apple=1
 
-  # Option 2 changes per device family
   local opt2_label opt2_flags
   case "$DEVICE_TYPE" in
-    1)   opt2_label="${BMAGENTA}-A + Apple scripts${NC}  "; opt2_flags="-A --script afp-serverinfo,smb-os-discovery,dns-service-discovery" ;;
-    2|3) opt2_label="${BCYAN}lockdownd only${NC}        "; opt2_flags="-sS -Pn -p 62078 --source-port 5353" ;;
+    1)   opt2_label="${BMAGENTA}-A + Apple scripts${NC} "; opt2_flags="-A --script afp-serverinfo,smb-os-discovery,dns-service-discovery" ;;
+    2|3) opt2_label="${BCYAN}lockdownd only (62078)${NC}"; opt2_flags="-sS -Pn -p 62078 --source-port 5353" ;;
     4)   opt2_label="${BBLUE}SMB + WinRM${NC}           "; opt2_flags="-sS -Pn -p 135,139,445,5985 --script smb-os-discovery" ;;
     5)   opt2_label="${BGREEN}SSH + banner${NC}          "; opt2_flags="-sS -Pn -p 22,80 --script ssh-hostkey,banner" ;;
     8)   opt2_label="${RED}SNMP + Telnet${NC}         "; opt2_flags="-sS -sU -Pn -p T:23,80,U:161 --script snmp-sysdescr" ;;
@@ -401,81 +428,88 @@ offer_retry() {
     *)   opt2_label="${BCYAN}-A -sU${NC}               "; opt2_flags="-A -sU" ;;
   esac
 
-  echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-A${NC}                    Aggressive  ${GRAY}(-sV -sC -O --traceroute)${NC}"
-  echo -e "  ${BWHITE}[2]${NC}  ${opt2_label}  ${GRAY}best for ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
-  echo -e "  ${BWHITE}[3]${NC}  ${BYELLOW}-f --mtu 24${NC}           Fragment packets"
-  echo -e "  ${BWHITE}[4]${NC}  ${BYELLOW}-sU --top-ports 100${NC}   UDP top 100"
-  echo -e "  ${BWHITE}[5]${NC}  ${BYELLOW}-p- --min-rate 500${NC}    All 65535 ports"
-  echo -e "  ${BWHITE}[6]${NC}  ${WHITE}Custom${NC}                add your own nmap flags"
-  echo -e "  ${BWHITE}[0]${NC}  ${GRAY}Exit${NC}\n"
+  while true; do
+    section "◈" "WHAT'S NEXT?" "$BCYAN"
+    echo -e "  ${BWHITE}[1]${NC}  ${BGREEN}New scan${NC}                new target, start over"
+    echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}Same target${NC}             keep ${BYELLOW}$TARGET${NC}, change device/depth/noise"
+    echo -e "  ${BWHITE}[3]${NC}  ${BYELLOW}Re-run${NC}                 exact same command again"
+    echo -e "  ${GRAY}  ─────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${BWHITE}[4]${NC}  ${BCYAN}-A${NC}                       Aggressive  ${GRAY}(-sV -sC -O --traceroute)${NC}"
+    echo -e "  ${BWHITE}[5]${NC}  ${opt2_label}  ${GRAY}best for ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
+    echo -e "  ${BWHITE}[6]${NC}  ${BYELLOW}-f --mtu 24${NC}             Fragment packets"
+    echo -e "  ${BWHITE}[7]${NC}  ${BYELLOW}-sU --top-ports 100${NC}     UDP top 100"
+    echo -e "  ${BWHITE}[8]${NC}  ${BYELLOW}-p- --min-rate 500${NC}      All 65535 ports"
+    echo -e "  ${BWHITE}[9]${NC}  ${WHITE}Custom flags${NC}            type your own nmap parameters"
+    echo -e "  ${GRAY}  ─────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${BWHITE}[0]${NC}  ${GRAY}Exit${NC}\n"
+    echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+    read -r choice
 
-  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
-  read -r retry_opt
-
-  [[ "$retry_opt" == "0" || -z "$retry_opt" ]] && { echo ""; return; }
-
-  local extra_retry=""
-  case "$retry_opt" in
-    1) extra_retry="-A" ;;
-    2) extra_retry="$opt2_flags" ;;
-    3) extra_retry="-f --mtu 24" ;;
-    4) extra_retry="-sU --top-ports 100" ;;
-    5) extra_retry="-p- --min-rate 500" ;;
-    6)
-      echo -ne "\n  ${BYELLOW}➤${NC}  Extra nmap flags: "
-      read -r extra_retry
-      [[ -z "$extra_retry" ]] && { echo ""; return; }
-      ;;
-    *) echo -e "  ${BRED}✗${NC}  Invalid option\n"; return ;;
-  esac
-
-  local retry_cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn $extra_retry $TARGET"
-
-  echo -e "\n  ${GRAY}Command${NC}"
-  echo -e "  ${GRAY}  ┌────────────────────────────────────────────────────────────────${NC}"
-  echo -e "  ${GRAY}  │${NC}  ${BGREEN}$retry_cmd${NC}"
-  echo -e "  ${GRAY}  └────────────────────────────────────────────────────────────────${NC}\n"
-  echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
-  read -r confirm
-  [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo -e "\n  ${GRAY}Cancelled.${NC}\n"; return; }
-
-  local retry_tmp
-  retry_tmp=$(mktemp /tmp/en_scan_XXXXXX.txt)
-
-  echo ""
-  echo -e "$LINE"
-  echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}[$extra_retry]${NC}"
-  echo -e "$LINE\n"
-  eval "$retry_cmd" | tee "$retry_tmp"
-  echo ""
-  echo -e "$LINE"
-  echo -e "  ${BGREEN}✓${NC}  Scan complete."
-  echo -e "$LINE"
-
-  analyze_scan "$retry_tmp" 0
-  rm -f "$retry_tmp"
+    case "$choice" in
+      0) return 0 ;;   # exit
+      1) return 1 ;;   # new scan
+      2) return 2 ;;   # same target
+      3) return 3 ;;   # re-run
+      4|5|6|7|8|9)
+        local extra_flags=""
+        case "$choice" in
+          4) extra_flags="-A" ;;
+          5) extra_flags="$opt2_flags" ;;
+          6) extra_flags="-f --mtu 24" ;;
+          7) extra_flags="-sU --top-ports 100" ;;
+          8) extra_flags="-p- --min-rate 500" ;;
+          9)
+            echo -ne "\n  ${BYELLOW}➤${NC}  Extra nmap flags: "
+            read -r extra_flags
+            [[ -z "$extra_flags" ]] && continue
+            ;;
+        esac
+        local retry_cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn $extra_flags $TARGET"
+        echo -e "\n  ${GRAY}  │${NC}  ${BGREEN}$retry_cmd${NC}\n"
+        echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
+        read -r confirm
+        [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
+        local retry_tmp
+        retry_tmp=$(mktemp /tmp/en_scan_XXXXXX.txt)
+        echo ""
+        echo -e "$LINE"
+        echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}[$extra_flags]${NC}"
+        echo -e "$LINE\n"
+        eval "$retry_cmd" | tee "$retry_tmp"
+        echo ""
+        echo -e "$LINE"
+        echo -e "  ${BGREEN}✓${NC}  Scan complete."
+        echo -e "$LINE"
+        analyze_scan "$retry_tmp" 0
+        rm -f "$retry_tmp"
+        ;;
+      *) echo -e "  ${BRED}✗${NC}  Enter 0–9\n" ;;
+    esac
+  done
 }
 
-# ── Summary and execution ─────────────────────────────────────────────────────
-compose_and_run() {
+# ── Execute scan ──────────────────────────────────────────────────────────────
+# Returns: 0 = scan executed, 1 = user went back to extras
+execute_scan() {
   local cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn${EXTRA_FLAGS} $TARGET"
 
   section "◈" "SCAN SUMMARY" "$BWHITE"
-
-  printf "  ${GRAY}%-14s${NC}  ${BYELLOW}%s${NC}\n"                          "Target"      "$TARGET"
-  printf "  ${GRAY}%-14s${NC}  ${DEVICE_COLOR}%s${NC}\n"                     "Device"      "$DEVICE_NAME"
-  printf "  ${GRAY}%-14s${NC}  $(stealth_color "$STEALTH_LEVEL")%s${NC}\n"   "Noise"       "$STEALTH_NAME"
-  printf "  ${GRAY}%-14s${NC}  ${WHITE}%s${NC}\n"                            "Depth"       "$DEPTH_NAME"
+  printf "  ${GRAY}%-14s${NC}  ${BYELLOW}%s${NC}\n"                          "Target"  "$TARGET"
+  printf "  ${GRAY}%-14s${NC}  ${DEVICE_COLOR}%s${NC}\n"                     "Device"  "$DEVICE_NAME"
+  printf "  ${GRAY}%-14s${NC}  $(stealth_color "$STEALTH_LEVEL")%s${NC}\n"   "Noise"   "$STEALTH_NAME"
+  printf "  ${GRAY}%-14s${NC}  ${WHITE}%s${NC}\n"                            "Depth"   "$DEPTH_NAME"
   echo ""
   echo -e "  ${GRAY}Command${NC}"
   echo -e "  ${GRAY}  ┌────────────────────────────────────────────────────────────────${NC}"
   echo -e "  ${GRAY}  │${NC}  ${BGREEN}$cmd${NC}"
-  echo -e "  ${GRAY}  └────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
+  echo -e "  ${GRAY}  └────────────────────────────────────────────────────────────────${NC}\n"
+  echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N/b=back]${NC}: "
   read -r confirm
+
+  [[ "$confirm" == "b" || "$confirm" == "B" ]] && return 1
   [[ "$confirm" != "y" && "$confirm" != "Y" ]] && {
-    echo -e "\n  ${GRAY}Cancelled.${NC}\n"; exit 0
+    echo -e "\n  ${GRAY}Cancelled — returning to menu.${NC}\n"
+    return 1
   }
 
   echo ""
@@ -485,7 +519,6 @@ compose_and_run() {
 
   local tmp_out
   tmp_out=$(mktemp /tmp/en_scan_XXXXXX.txt)
-
   eval "$cmd" | tee "$tmp_out"
   echo ""
   echo -e "$LINE"
@@ -494,16 +527,45 @@ compose_and_run() {
 
   analyze_scan "$tmp_out"
   rm -f "$tmp_out"
+  return 0
+}
 
-  offer_retry
+# ── Main wizard — state machine ───────────────────────────────────────────────
+# States: 1=target  2=device  3=stealth  4=depth  5=extras  6=execute  7=post-scan
+run_wizard() {
+  local step=1
+
+  while true; do
+    case $step in
+      1)  menu_target  && (( step++ )) || return 0 ;;
+      2)  menu_device  && (( step++ )) || (( step-- )) ;;
+      3)  menu_stealth && (( step++ )) || (( step-- )) ;;
+      4)  menu_depth   && (( step++ )) || (( step-- )) ;;
+      5)  menu_extras  && (( step++ )) || (( step-- )) ;;
+      6)
+        execute_scan
+        local ret=$?
+        if [[ $ret -eq 1 ]]; then
+          (( step-- ))  # back to extras
+        else
+          step=7
+        fi
+        ;;
+      7)
+        post_scan_menu
+        case $? in
+          0) return 0 ;;     # exit
+          1) step=1 ;;       # new scan
+          2) step=2 ;;       # same target, pick device
+          3) step=6 ;;       # re-run same command
+        esac
+        ;;
+    esac
+  done
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 banner
 get_local_ip
-menu_target
-menu_device
-menu_stealth
-menu_depth
-menu_extras
-compose_and_run
+run_wizard
+echo -e "  ${GRAY}Goodbye.${NC}\n"
