@@ -218,11 +218,14 @@ analyze_scan() {
   [[ ! -f "$f" ]] && return
 
   local open_count host_down all_filtered os_detected os_unreliable
-  open_count=$(grep -cE "/(tcp|udp)[[:space:]]+open" "$f" 2>/dev/null || echo 0)
-  host_down=$(grep -c "Host seems down\|0 hosts up" "$f" 2>/dev/null || echo 0)
-  all_filtered=$(grep -cE "All [0-9]+ scanned ports.*filtered|Not shown: [0-9]+ filtered" "$f" 2>/dev/null || echo 0)
-  os_detected=$(grep -c "OS details:\|Running:" "$f" 2>/dev/null || echo 0)
-  os_unreliable=$(grep -c "OSScan results may be unreliable" "$f" 2>/dev/null || echo 0)
+  open_count=$(grep -cE "/(tcp|udp)[[:space:]]+open" "$f" 2>/dev/null)
+  host_down=$(grep -c "Host seems down\|0 hosts up" "$f" 2>/dev/null)
+  all_filtered=$(grep -cE "All [0-9]+ scanned ports.*filtered|Not shown: [0-9]+ filtered" "$f" 2>/dev/null)
+  os_detected=$(grep -c "OS details:\|Running:" "$f" 2>/dev/null)
+  os_unreliable=$(grep -c "OSScan results may be unreliable" "$f" 2>/dev/null)
+  # grep -c always prints "0" on no match (exit 1); default handles file-error edge case
+  open_count=${open_count:-0}; host_down=${host_down:-0}; all_filtered=${all_filtered:-0}
+  os_detected=${os_detected:-0}; os_unreliable=${os_unreliable:-0}
 
   section "◈" "ANALYSIS" "$BYELLOW"
 
