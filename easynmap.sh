@@ -223,64 +223,157 @@ analyze_scan() {
   all_filtered=$(grep -cE "All [0-9]+ scanned ports.*filtered|Not shown: [0-9]+ filtered" "$f" 2>/dev/null)
   os_detected=$(grep -c "OS details:\|Running:" "$f" 2>/dev/null)
   os_unreliable=$(grep -c "OSScan results may be unreliable" "$f" 2>/dev/null)
-  # grep -c always prints "0" on no match (exit 1); default handles file-error edge case
   open_count=${open_count:-0}; host_down=${host_down:-0}; all_filtered=${all_filtered:-0}
   os_detected=${os_detected:-0}; os_unreliable=${os_unreliable:-0}
 
+  # true if target is an Apple device (Mac=1, iPhone=2, iPad=3)
+  local is_apple=0
+  [[ "$DEVICE_TYPE" =~ ^[123]$ ]] && is_apple=1
+
   section "◈" "ANALYSIS" "$BYELLOW"
 
-  # ── Host down ──
+  # ── Host unreachable ──
   if (( host_down > 0 )); then
-    echo -e "  ${BRED}✗${NC}  Host appears to be blocking ping probes\n"
-    echo -e "  ${BYELLOW}Recommendations:${NC}"
-    echo -e "  ${GRAY}  ›${NC} The host may be up but ignoring ICMP — try ${BCYAN}Aggressive${NC} mode (forces -Pn)"
-    echo -e "  ${GRAY}  ›${NC} Verify the target is actually online with: ${BGREEN}ping $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Force scan regardless of ping: ${BGREEN}sudo nmap -sS -Pn -p 80,443,22 $TARGET${NC}"
-    echo ""; return
+    echo -e "  ${BRED}✗${NC}  Target returned 0 hosts up — unreachable or all ports blocked\n"
+    echo -e "  ${BYELLOW}Try these commands:${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Confirm it's online:"
+    echo -e "    ${BGREEN}ping -c 3 $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Aggressive scan (${BCYAN}-A${NC} = versions + all NSE scripts + OS + traceroute):"
+    echo -e "    ${BGREEN}sudo nmap -A -Pn $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Spoof source port to look like DNS traffic (bypasses some firewalls):"
+    echo -e "    ${BGREEN}sudo nmap -sS -Pn --source-port 53 $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Fragment packets into smaller chunks:"
+    echo -e "    ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}\n"
+    if (( is_apple )); then
+      echo -e "  ${BMAGENTA}  ›${NC} ${BMAGENTA}Apple device:${NC} screen may be off/locked — wake it and retry"
+      echo -e "  ${BMAGENTA}  ›${NC} ${BMAGENTA}Apple + aggressive scripts:${NC}"
+      echo -e "    ${BGREEN}sudo nmap -A -Pn --script afp-info,mdns-dns-sd,smb-os-discovery $TARGET${NC}\n"
+    fi
+    return
   fi
 
   # ── All ports filtered ──
   if (( all_filtered > 0 && open_count == 0 )); then
-    echo -e "  ${BYELLOW}△${NC}  All ports are filtered — a firewall is likely blocking probes\n"
-    echo -e "  ${BYELLOW}Recommendations:${NC}"
-    echo -e "  ${GRAY}  ›${NC} Switch to ${BYELLOW}Full${NC} depth + ${BRED}Aggressive${NC} noise and re-run"
-    echo -e "  ${GRAY}  ›${NC} Try packet fragmentation: ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Try ACK scan to map firewall rules: ${BGREEN}sudo nmap -sA -Pn $TARGET${NC}"
-    echo -e "  ${GRAY}  ›${NC} Try UDP (bypasses some firewalls): ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}"
-    echo ""; return
+    echo -e "  ${BYELLOW}△${NC}  All ports filtered — firewall is dropping probe packets\n"
+    echo -e "  ${BYELLOW}Try these commands:${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Aggressive scan (different probe types, finds more):"
+    echo -e "    ${BGREEN}sudo nmap -A -Pn $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Fragment packets (evades some packet inspection):"
+    echo -e "    ${BGREEN}sudo nmap -sS -Pn -f --mtu 24 $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} ACK scan to map which ports the firewall allows through:"
+    echo -e "    ${BGREEN}sudo nmap -sA -Pn $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} UDP scan (separate protocol, may slip past TCP firewall):"
+    echo -e "    ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Full port range + aggressive:"
+    echo -e "    ${BGREEN}sudo nmap -A -Pn -p- --min-rate 500 $TARGET${NC}\n"
+    if (( is_apple )); then
+      echo -e "  ${BMAGENTA}  ›${NC} ${BMAGENTA}Apple device:${NC}"
+      echo -e "    ${BGREEN}sudo nmap -A -Pn --script afp-info,mdns-dns-sd,smb-os-discovery $TARGET${NC}\n"
+    fi
+    return
   fi
 
-  # ── No open ports (but not all filtered) ──
+  # ── No open ports (not all filtered) ──
   if (( open_count == 0 )); then
     echo -e "  ${BYELLOW}△${NC}  No open ports found with this profile\n"
-    echo -e "  ${BYELLOW}Recommendations:${NC}"
-    echo -e "  ${GRAY}  ›${NC} Try ${BRED}Full${NC} depth to scan all 65535 ports"
-    echo -e "  ${GRAY}  ›${NC} Try a different device profile — the target may not match ${DEVICE_COLOR}${DEVICE_NAME}${NC}"
-    echo -e "  ${GRAY}  ›${NC} Add UDP scan: ${BGREEN}sudo nmap -sU -Pn --top-ports 50 $TARGET${NC}"
-    echo ""; return
+    echo -e "  ${BYELLOW}Try these commands:${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Scan all 65535 ports:"
+    echo -e "    ${BGREEN}sudo nmap -sS -Pn -p- --min-rate 500 $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} Aggressive (finds services on non-standard ports):"
+    echo -e "    ${BGREEN}sudo nmap -A -Pn $TARGET${NC}\n"
+    echo -e "  ${GRAY}  ›${NC} UDP scan:"
+    echo -e "    ${BGREEN}sudo nmap -sU -Pn --top-ports 100 $TARGET${NC}\n"
+    return
   fi
 
   # ── Ports found ──
   echo -e "  ${BGREEN}✓${NC}  ${open_count} open port(s) found\n"
 
-  # OS
   if (( os_unreliable > 0 )); then
     echo -e "  ${BYELLOW}△${NC}  OS fingerprint unreliable — nmap needs more open/closed ports"
-    echo -e "  ${GRAY}  ›${NC} Re-run with ${BRED}Full${NC} depth for a more accurate OS guess"
+    echo -e "  ${GRAY}  ›${NC} ${BGREEN}sudo nmap -A -Pn -p- --min-rate 500 $TARGET${NC}"
   elif (( os_detected > 0 )); then
     echo -e "  ${BGREEN}✓${NC}  OS fingerprint captured"
   elif [[ "$STEALTH_FLAGS" != *"-O"* && "$EXTRA_FLAGS" != *"-O"* ]]; then
-    echo -e "  ${GRAY}–${NC}  OS detection was not enabled"
-    echo -e "  ${GRAY}  ›${NC} Re-run and add extra ${BCYAN}[3] -O --osscan-guess${NC}"
+    echo -e "  ${GRAY}–${NC}  OS detection not enabled"
+    echo -e "  ${GRAY}  ›${NC} ${BGREEN}sudo nmap -A -Pn $TARGET${NC}  ${GRAY}(-A includes OS detection)${NC}"
   fi
 
-  # Versions
   if [[ "$STEALTH_FLAGS" != *"-sV"* && "$EXTRA_FLAGS" != *"-sV"* ]]; then
-    echo -e "  ${GRAY}–${NC}  Service versions were not detected"
-    echo -e "  ${GRAY}  ›${NC} Re-run and add extra ${BCYAN}[1] -sV${NC} to fingerprint running software"
+    echo -e "  ${GRAY}–${NC}  Service versions not detected"
+    echo -e "  ${GRAY}  ›${NC} ${BGREEN}sudo nmap -sV -Pn $TARGET${NC}  ${GRAY}(or use -A for everything at once)${NC}"
   fi
 
   echo ""
+}
+
+# ── Quick retry menu ───────────────────────────────────────────────────────────
+offer_retry() {
+  section "◈" "QUICK RETRY" "$BCYAN"
+  echo -e "  ${GRAY}Run a follow-up scan without going through all menus again${NC}\n"
+
+  local is_apple=0
+  [[ "$DEVICE_TYPE" =~ ^[123]$ ]] && is_apple=1
+
+  echo -e "  ${BWHITE}[1]${NC}  ${BCYAN}-A${NC}                     Aggressive  ${GRAY}(-sV -sC -O --traceroute bundled)${NC}"
+  if (( is_apple )); then
+    echo -e "  ${BWHITE}[2]${NC}  ${BMAGENTA}-A + Apple scripts${NC}     ${GRAY}afp-info, mdns-dns-sd, smb-os-discovery${NC}"
+  else
+    echo -e "  ${BWHITE}[2]${NC}  ${BCYAN}-A -sU${NC}                 Aggressive + UDP"
+  fi
+  echo -e "  ${BWHITE}[3]${NC}  ${BYELLOW}-f --mtu 24${NC}            Fragment packets  ${GRAY}(evades some firewalls)${NC}"
+  echo -e "  ${BWHITE}[4]${NC}  ${BYELLOW}-sU --top-ports 100${NC}    UDP top 100"
+  echo -e "  ${BWHITE}[5]${NC}  ${BYELLOW}-p- --min-rate 500${NC}     Full port range  ${GRAY}(all 65535 ports, fast)${NC}"
+  echo -e "  ${BWHITE}[6]${NC}  ${WHITE}Custom${NC}                 add your own nmap flags"
+  echo -e "  ${BWHITE}[0]${NC}  ${GRAY}Exit${NC}\n"
+
+  echo -ne "  ${BYELLOW}➤${NC}  Selection: "
+  read -r retry_opt
+
+  [[ "$retry_opt" == "0" || -z "$retry_opt" ]] && { echo ""; return; }
+
+  local extra_retry=""
+  case "$retry_opt" in
+    1) extra_retry="-A" ;;
+    2) (( is_apple )) \
+         && extra_retry="-A --script afp-info,mdns-dns-sd,smb-os-discovery" \
+         || extra_retry="-A -sU" ;;
+    3) extra_retry="-f --mtu 24" ;;
+    4) extra_retry="-sU --top-ports 100" ;;
+    5) extra_retry="-p- --min-rate 500" ;;
+    6)
+      echo -ne "\n  ${BYELLOW}➤${NC}  Extra nmap flags: "
+      read -r extra_retry
+      [[ -z "$extra_retry" ]] && { echo ""; return; }
+      ;;
+    *) echo -e "  ${BRED}✗${NC}  Invalid option\n"; return ;;
+  esac
+
+  local retry_cmd="sudo nmap $STEALTH_FLAGS $DEPTH_FLAGS -Pn $extra_retry $TARGET"
+
+  echo -e "\n  ${GRAY}Command${NC}"
+  echo -e "  ${GRAY}  ┌────────────────────────────────────────────────────────────────${NC}"
+  echo -e "  ${GRAY}  │${NC}  ${BGREEN}$retry_cmd${NC}"
+  echo -e "  ${GRAY}  └────────────────────────────────────────────────────────────────${NC}\n"
+  echo -ne "  ${BYELLOW}➤${NC}  Execute? ${GRAY}[y/N]${NC}: "
+  read -r confirm
+  [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { echo -e "\n  ${GRAY}Cancelled.${NC}\n"; return; }
+
+  local retry_tmp
+  retry_tmp=$(mktemp /tmp/en_scan_XXXXXX.txt)
+
+  echo ""
+  echo -e "$LINE"
+  echo -e "  ${BCYAN}SCANNING${NC}  ${GRAY}→${NC}  ${BYELLOW}$TARGET${NC}  ${GRAY}[$extra_retry]${NC}"
+  echo -e "$LINE\n"
+  eval "$retry_cmd" | tee "$retry_tmp"
+  echo ""
+  echo -e "$LINE"
+  echo -e "  ${BGREEN}✓${NC}  Scan complete."
+  echo -e "$LINE"
+
+  analyze_scan "$retry_tmp"
+  rm -f "$retry_tmp"
 }
 
 # ── Summary and execution ─────────────────────────────────────────────────────
@@ -321,6 +414,8 @@ compose_and_run() {
 
   analyze_scan "$tmp_out"
   rm -f "$tmp_out"
+
+  offer_retry
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
